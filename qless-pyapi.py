@@ -1,5 +1,6 @@
 import json
 import qless
+import re
 from werkzeug.wrappers import Request, Response
 from werkzeug.routing import Map, Rule
 from werkzeug.exceptions import HTTPException, NotFound
@@ -8,15 +9,67 @@ from werkzeug.exceptions import HTTPException, NotFound
 class QlessPyapi(object):
     def __init__(self, qless_client):
         self.client = qless_client
+        self.config = {
+            'groups': {
+                'simon': {
+                    'foobar': {
+                        'foo': 'foo-.*',
+                        'bar': 'bar-.*'
+                    },
+                    'example': 'sample-.*'
+                },
+                'thorsten': {
+                    'example': {
+                        'sample': 'sample-.*',
+                        'foobar': {
+                            'foobar': 'foobar-.*',
+                            'foo': 'foo-.*',
+                            'bar': 'bar-.*'
+                        },
+                    },
+                    'foobar': '(foo)?bar-.*'
+                },
+                'sample': 'sample-.*'
+            }
+            # 'groups': {
+            #     'sample': 'sample-.*',
+            #     'foobar': 'foobar-.*',
+            #     'foo': 'foo-.*',
+            #     'bar': 'bar-.*',
+            # },
+        }
         self.url_map = Map([
-            Rule('/', endpoint='root'),
+            Rule('/config', endpoint='config'),
+            Rule('/groups', endpoint='groups'),
+            Rule('/groups/<regex_str>', endpoint='groups_get'),
             Rule('/queues', endpoint='queues'),
             Rule('/queues/<queue_name>', endpoint='queues_get'),
             Rule('/queues/<queue_name>/stats', endpoint='queues_stats'),
         ])
 
-    def on_root(self, request):
-        return Response('Hello World!')
+    def on_config(self, request):
+        return Response(json.dumps(self.config), content_type='application/json')
+
+    def on_groups(self, request):
+        groups = self.group_to_navtree('Groups', self.config['groups'])
+        return Response(json.dumps(groups['children']), content_type='application/json')
+
+    def group_to_navtree(self, name, data):
+        if isinstance(data, basestring):
+            return {
+                'label': name,
+                'data': data
+             }
+        else:
+            return {
+                'label': name,
+                'children': [self.group_to_navtree(group_name, group_data) for (group_name, group_data) in data.items()]
+             }
+
+    def on_groups_get(self, request, regex_str):
+        regex = re.compile(regex_str)
+        queues = [queue for queue in self.client.queues.counts if regex.match(queue['name'])]
+        return Response(json.dumps(queues), content_type='application/json')
 
     def on_queues(self, request):
         queues = self.client.queues.counts
