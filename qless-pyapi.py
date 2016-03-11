@@ -1,6 +1,7 @@
 import json
 import qless
 import re
+from QlessJSONEncoder import QlessJSONEncoder
 from werkzeug.wrappers import Request, Response
 from werkzeug.routing import Map, Rule
 from werkzeug.exceptions import HTTPException, NotFound
@@ -11,7 +12,6 @@ class QlessPyapi(object):
         self.client = qless_client
         self.config = {
             'groups': {
-                # 'all': '.*',
                 'ungrouped': '$',
                 'simon': {
                     'foobar': {
@@ -33,12 +33,6 @@ class QlessPyapi(object):
                 },
                 'sample': 'sample-.*'
             }
-            # 'groups': {
-            #     'sample': 'sample-.*',
-            #     'foobar': 'foobar-.*',
-            #     'foo': 'foo-.*',
-            #     'bar': 'bar-.*',
-            # },
         }
         self.url_map = Map([
             Rule('/config', endpoint='config'),
@@ -50,14 +44,19 @@ class QlessPyapi(object):
             Rule('/queues/<queue_name>/pause', endpoint='queues_pause'),
             Rule('/queues/<queue_name>/unpause', endpoint='queues_unpause'),
             Rule('/queues/<queue_name>/stats', endpoint='queues_stats'),
+            Rule('/jobs/failed', endpoint='jobs_failed'),
+            Rule('/jobs/failed/<group>', endpoint='jobs_failed_get'),
         ])
 
+    def json_response(self, content):
+        return Response(json.dumps(content, default=QlessJSONEncoder().default), content_type='application/json')
+
     def on_config(self, request):
-        return Response(json.dumps(self.config), content_type='application/json')
+        return self.json_response(self.config)
 
     def on_groups(self, request):
         groups = self.group_to_navtree('Groups', self.config['groups'])
-        return Response(json.dumps(groups['children']), content_type='application/json')
+        return self.json_response(groups['children'])
 
     def group_to_navtree(self, name, data):
         if isinstance(data, basestring):
@@ -74,11 +73,11 @@ class QlessPyapi(object):
     def on_groups_get(self, request, regex_str):
         regex = re.compile("(?:" + regex_str + r")\Z")
         queues = [queue for queue in self.client.queues.counts if regex.match(queue['name'])]
-        return Response(json.dumps(queues), content_type='application/json')
+        return self.json_response(queues)
 
     def on_groups_get_ungrouped(self, request):
         queues = self.queues_remove_group_matches(self.client.queues.counts, self.config['groups'])
-        return Response(json.dumps(queues), content_type='application/json')
+        return self.json_response(queues)
 
     def queues_remove_group_matches(self, queues, data):
         if isinstance(data, basestring):
@@ -90,24 +89,25 @@ class QlessPyapi(object):
             return queues
 
     def on_queues(self, request):
-        queues = self.client.queues.counts
-        return Response(json.dumps(queues), content_type='application/json')
+        return self.json_response(self.client.queues.counts)
 
     def on_queues_get(self, request, queue_name):
-        queue = self.client.queues[queue_name].counts
-        return Response(json.dumps(queue), content_type='application/json')
+        return self.json_response(self.client.queues[queue_name].counts)
 
     def on_queues_pause(self, request, queue_name):
-        ret = self.client.queues[queue_name].pause()
-        return Response(json.dumps(ret), content_type='application/json')
+        return self.json_response(self.client.queues[queue_name].pause())
 
     def on_queues_unpause(self, request, queue_name):
-        ret = self.client.queues[queue_name].unpause()
-        return Response(json.dumps(ret), content_type='application/json')
+        return self.json_response(self.client.queues[queue_name].unpause())
 
     def on_queues_stats(self, request, queue_name):
-        queue = self.client.queues[queue_name].stats()
-        return Response(json.dumps(queue), content_type='application/json')
+        return self.json_response(self.client.queues[queue_name].stats())
+
+    def on_jobs_failed(self, request):
+        return self.json_response(self.client.jobs.failed())
+
+    def on_jobs_failed_get(self, request, group):
+        return self.json_response(self.client.jobs.failed(group))
 
     def dispatch_request(self, request):
         adapter = self.url_map.bind_to_environ(request.environ)
