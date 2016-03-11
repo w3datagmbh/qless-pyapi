@@ -11,6 +11,8 @@ class QlessPyapi(object):
         self.client = qless_client
         self.config = {
             'groups': {
+                # 'all': '.*',
+                'ungrouped': '$',
                 'simon': {
                     'foobar': {
                         'foo': 'foo-.*',
@@ -42,8 +44,11 @@ class QlessPyapi(object):
             Rule('/config', endpoint='config'),
             Rule('/groups', endpoint='groups'),
             Rule('/groups/<regex_str>', endpoint='groups_get'),
+            Rule('/groups/$', endpoint='groups_get_ungrouped'),
             Rule('/queues', endpoint='queues'),
             Rule('/queues/<queue_name>', endpoint='queues_get'),
+            Rule('/queues/<queue_name>/pause', endpoint='queues_pause'),
+            Rule('/queues/<queue_name>/unpause', endpoint='queues_unpause'),
             Rule('/queues/<queue_name>/stats', endpoint='queues_stats'),
         ])
 
@@ -59,17 +64,30 @@ class QlessPyapi(object):
             return {
                 'label': name,
                 'data': data
-             }
+            }
         else:
             return {
                 'label': name,
                 'children': [self.group_to_navtree(group_name, group_data) for (group_name, group_data) in data.items()]
-             }
+            }
 
     def on_groups_get(self, request, regex_str):
-        regex = re.compile(regex_str)
+        regex = re.compile("(?:" + regex_str + r")\Z")
         queues = [queue for queue in self.client.queues.counts if regex.match(queue['name'])]
         return Response(json.dumps(queues), content_type='application/json')
+
+    def on_groups_get_ungrouped(self, request):
+        queues = self.queues_remove_group_matches(self.client.queues.counts, self.config['groups'])
+        return Response(json.dumps(queues), content_type='application/json')
+
+    def queues_remove_group_matches(self, queues, data):
+        if isinstance(data, basestring):
+            regex = re.compile("(?:" + data + r")\Z")
+            return [queue for queue in queues if not regex.match(queue['name'])]
+        else:
+            for group_data in data.values():
+                queues = self.queues_remove_group_matches(queues, group_data)
+            return queues
 
     def on_queues(self, request):
         queues = self.client.queues.counts
@@ -78,6 +96,14 @@ class QlessPyapi(object):
     def on_queues_get(self, request, queue_name):
         queue = self.client.queues[queue_name].counts
         return Response(json.dumps(queue), content_type='application/json')
+
+    def on_queues_pause(self, request, queue_name):
+        ret = self.client.queues[queue_name].pause()
+        return Response(json.dumps(ret), content_type='application/json')
+
+    def on_queues_unpause(self, request, queue_name):
+        ret = self.client.queues[queue_name].unpause()
+        return Response(json.dumps(ret), content_type='application/json')
 
     def on_queues_stats(self, request, queue_name):
         queue = self.client.queues[queue_name].stats()
