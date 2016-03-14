@@ -44,8 +44,9 @@ class QlessPyapi(object):
             Rule('/queues/<queue_name>/pause', endpoint='queues_pause'),
             Rule('/queues/<queue_name>/unpause', endpoint='queues_unpause'),
             Rule('/queues/<queue_name>/stats', endpoint='queues_stats'),
+            Rule('/jobs/<jid>', endpoint='jobs_get'),
             Rule('/jobs/failed', endpoint='jobs_failed'),
-            Rule('/jobs/failed/<group>', endpoint='jobs_failed_get'),
+            Rule('/jobs/failed/<group>', endpoint='jobs_failed_list'),
         ])
 
     def json_response(self, content):
@@ -103,10 +104,16 @@ class QlessPyapi(object):
     def on_queues_stats(self, request, queue_name):
         return self.json_response(self.client.queues[queue_name].stats())
 
+    def on_jobs_get(self, request, jid):
+        job = self.client.jobs.get(jid)
+        if len(job) <= 0:
+            raise NotFound()
+        return self.json_response(job[0])
+
     def on_jobs_failed(self, request):
         return self.json_response(self.client.jobs.failed())
 
-    def on_jobs_failed_get(self, request, group):
+    def on_jobs_failed_list(self, request, group):
         return self.json_response(self.client.jobs.failed(group))
 
     def dispatch_request(self, request):
