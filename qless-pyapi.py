@@ -45,8 +45,12 @@ class QlessPyapi(object):
             Rule('/queues/<queue_name>/unpause', endpoint='queues_unpause'),
             Rule('/queues/<queue_name>/stats', endpoint='queues_stats'),
             Rule('/jobs/<jid>', endpoint='jobs_get'),
+            Rule('/jobs/<jid>/cancel', endpoint='jobs_cancel'),
+            Rule('/jobs/<jid>/retry', endpoint='jobs_retry'),
             Rule('/jobs/failed', endpoint='jobs_failed'),
             Rule('/jobs/failed/<group>', endpoint='jobs_failed_list'),
+            Rule('/jobs/failed/<group>/cancel', endpoint='jobs_failed_list_cancel'),
+            Rule('/jobs/failed/<group>/retry', endpoint='jobs_failed_list_retry'),
         ])
 
     def json_response(self, content):
@@ -104,17 +108,43 @@ class QlessPyapi(object):
     def on_queues_stats(self, request, queue_name):
         return self.json_response(self.client.queues[queue_name].stats())
 
-    def on_jobs_get(self, request, jid):
+    def get_job(self, jid):
         job = self.client.jobs.get(jid)
         if len(job) <= 0:
             raise NotFound()
-        return self.json_response(job[0])
+        return job[0]
+
+    def on_jobs_get(self, request, jid):
+        return self.json_response(self.get_job(jid))
+
+    def on_jobs_cancel(self, request, jid):
+        return self.json_response(self.get_job(jid).cancel())
+
+    def on_jobs_retry(self, request, jid):
+        job = self.get_job(jid)
+        return self.json_response(job.move(job.queue_name))
 
     def on_jobs_failed(self, request):
         return self.json_response(self.client.jobs.failed())
 
     def on_jobs_failed_list(self, request, group):
         return self.json_response(self.client.jobs.failed(group))
+
+    def on_jobs_failed_list_cancel(self, request, group):
+        failed = self.client.jobs.failed(group, 0, 1000)
+        res = []
+        for job in failed['jobs']:
+            res.append(job.cancel())
+
+        return self.json_response(res)
+
+    def on_jobs_failed_list_retry(self, request, group):
+        failed = self.client.jobs.failed(group, 0, 1000)
+        res = []
+        for job in failed['jobs']:
+            res.append(job.move(job.queue_name))
+
+        return self.json_response(res)
 
     def dispatch_request(self, request):
         adapter = self.url_map.bind_to_environ(request.environ)
