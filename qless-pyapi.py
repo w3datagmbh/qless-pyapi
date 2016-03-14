@@ -44,11 +44,12 @@ class QlessPyapi(object):
             Rule('/queues/<queue_name>/pause', endpoint='queues_pause'),
             Rule('/queues/<queue_name>/unpause', endpoint='queues_unpause'),
             Rule('/queues/<queue_name>/stats', endpoint='queues_stats'),
-            Rule('/jobs/<jid>', endpoint='jobs_get'),
-            Rule('/jobs/<jid>/cancel', endpoint='jobs_cancel'),
-            Rule('/jobs/<jid>/retry', endpoint='jobs_retry'),
+            Rule('/jobs/<string(length=32):jid>', endpoint='jobs_get'),
+            Rule('/jobs/<string(length=32):jid>/cancel', endpoint='jobs_cancel'),
+            Rule('/jobs/<string(length=32):jid>/retry', endpoint='jobs_retry'),
             Rule('/jobs/failed', endpoint='jobs_failed'),
-            Rule('/jobs/failed/<group>', endpoint='jobs_failed_list'),
+            # Rule('/jobs/failed/<group>', defaults={'start': 0, 'limit': 25}, endpoint='jobs_failed_list'),
+            Rule('/jobs/failed/<group>/<int:start>/<int:limit>', endpoint='jobs_failed_list'),
             Rule('/jobs/failed/<group>/cancel', endpoint='jobs_failed_list_cancel'),
             Rule('/jobs/failed/<group>/retry', endpoint='jobs_failed_list_retry'),
         ])
@@ -127,8 +128,8 @@ class QlessPyapi(object):
     def on_jobs_failed(self, request):
         return self.json_response(self.client.jobs.failed())
 
-    def on_jobs_failed_list(self, request, group):
-        return self.json_response(self.client.jobs.failed(group))
+    def on_jobs_failed_list(self, request, group, start, limit):
+        return self.json_response(self.client.jobs.failed(group, start, limit))
 
     def on_jobs_failed_list_cancel(self, request, group):
         failed = self.client.jobs.failed(group, 0, 1000)
