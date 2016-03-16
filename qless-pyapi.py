@@ -1,6 +1,10 @@
+from __future__ import print_function
+
 import json
 import qless
 import re
+import sys
+
 from QlessJSONEncoder import QlessJSONEncoder
 from werkzeug.wrappers import Request, Response
 from werkzeug.routing import Map, Rule
@@ -8,32 +12,25 @@ from werkzeug.exceptions import HTTPException, NotFound
 
 
 class QlessPyapi(object):
-    def __init__(self, qless_client):
-        self.client = qless_client
+    def __init__(self):
+        # default config
         self.config = {
+            'redis': 'redis://localhost',
             'groups': {
-                'ungrouped': '$',
-                'simon': {
-                    'foobar': {
-                        'foo': 'foo-.*',
-                        'bar': 'bar-.*'
-                    },
-                    'example': 'sample-.*'
-                },
-                'thorsten': {
-                    'example': {
-                        'sample': 'sample-.*',
-                        'foobar': {
-                            'foobar': 'foobar-.*',
-                            'foo': 'foo-.*',
-                            'bar': 'bar-.*'
-                        },
-                    },
-                    'foobar': '(foo)?bar-.*'
-                },
-                'sample': 'sample-.*'
+                'ungrouped': '$'
             }
         }
+
+        # load config
+        try:
+            with open('config.json') as cfg:
+                self.config = json.load(cfg)
+        except Exception as e:
+            print("Failed to load config file: " + str(e), file=sys.stderr)
+            pass
+
+        self.client = qless.Client(self.config['redis'])
+
         self.url_map = Map([
             Rule('/config', endpoint='config'),
             Rule('/groups', endpoint='groups'),
@@ -211,9 +208,8 @@ class QlessPyapi(object):
         return self.wsgi_app(environ, start_response)
 
 
-def create_app(redisurl='redis://localhost'):
-    client = qless.Client(redisurl)
-    return QlessPyapi(client)
+def create_app():
+    return QlessPyapi()
 
 
 if __name__ == '__main__':

@@ -1,0 +1,16 @@
+{
+  "redis": "redis://localhost",
+  "groups": {
+    "ungrouped": "$",
+    "example": {
+      "sample": "sample-.*",
+      "foobar": {
+        "foobar": "foobar-.*",
+        "foo": "foo-.*",
+        "bar": "bar-.*"
+      }
+    },
+    "foobar": "(foo)?bar-.*",
+    "sample": "sample-.*"
+  }
+}
