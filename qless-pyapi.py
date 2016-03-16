@@ -57,6 +57,7 @@ class QlessPyapi(object):
             Rule('/jobs/failed/<group>/<int:start>/<int:limit>', endpoint='jobs_failed_list'),
             Rule('/jobs/failed/<group>/cancel', endpoint='jobs_failed_list_cancel'),
             Rule('/jobs/failed/<group>/retry', endpoint='jobs_failed_list_retry'),
+            Rule('/jobs/completed/<int:start>/<int:limit>', endpoint='jobs_completed'),
         ])
 
     def json_response(self, content):
@@ -175,6 +176,12 @@ class QlessPyapi(object):
             res.append(job.move(job.queue_name))
 
         return self.json_response(res)
+
+    def on_jobs_completed(self, request, start, limit):
+        jids = self.client.jobs.complete(start, limit)
+        jobs = self.client.jobs.get(*jids)
+        total = len(self.client.jobs.complete(0, 1000))  # TODO: FIX ME
+        return self.json_response({'total': total, 'jobs': jobs})
 
     def dispatch_request(self, request):
         adapter = self.url_map.bind_to_environ(request.environ)
