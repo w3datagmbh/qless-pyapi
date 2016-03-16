@@ -47,6 +47,7 @@ class QlessPyapi(object):
             Rule('/jobs/<string(length=32):jid>', endpoint='jobs_get'),
             Rule('/jobs/<string(length=32):jid>/cancel', endpoint='jobs_cancel'),
             Rule('/jobs/<string(length=32):jid>/retry', endpoint='jobs_retry'),
+            Rule('/jobs/<string(length=32):jid>/priority', endpoint='jobs_priority'),
             Rule('/jobs/<string(length=32):jid>/tag', endpoint='jobs_tag'),
             Rule('/jobs/<string(length=32):jid>/untag', endpoint='jobs_untag'),
             Rule('/jobs/<string(length=32):jid>/track', endpoint='jobs_track'),
@@ -129,9 +130,14 @@ class QlessPyapi(object):
         job = self.get_job(jid)
         return self.json_response(job.move(job.queue_name))
 
+    def on_jobs_priority(self, request, jid):
+        job = self.get_job(jid)
+        job.__setattr__('priority', request.data)
+        return self.json_response(job)
+
     def on_jobs_tag(self, request, jid):
         job = self.get_job(jid)
-        return self.json_response(json.loads(job.tag(request.data)))
+        return self.json_response(json.loads(json.loads(job.tag(request.data))))
 
     def on_jobs_untag(self, request, jid):
         job = self.get_job(jid)
