@@ -44,6 +44,8 @@ class QlessPyapi(object):
             Rule('/queues/<queue_name>/pause', endpoint='queues_pause'),
             Rule('/queues/<queue_name>/unpause', endpoint='queues_unpause'),
             Rule('/queues/<queue_name>/stats', endpoint='queues_stats'),
+            Rule('/workers', endpoint='workers'),
+            Rule('/workers/<worker_name>', endpoint='workers_get'),
             Rule('/jobs/<string(length=32):jid>', endpoint='jobs_get'),
             Rule('/jobs/<string(length=32):jid>/cancel', endpoint='jobs_cancel'),
             Rule('/jobs/<string(length=32):jid>/retry', endpoint='jobs_retry'),
@@ -115,6 +117,15 @@ class QlessPyapi(object):
     def on_queues_stats(self, request, queue_name):
         return self.json_response(self.client.queues[queue_name].stats())
 
+    def on_workers(self, request):
+        return self.json_response(self.client.workers.counts)
+
+    def on_workers_get(self, request, worker_name):
+        worker = self.client.workers[worker_name]
+        worker['jobs'] = self.client.jobs.get(*worker['jobs'])
+        worker['stalled'] = self.client.jobs.get(*worker['stalled'])
+        return self.json_response(worker)
+
     def get_job(self, jid):
         job = self.client.jobs.get(jid)
         if len(job) <= 0:
@@ -133,7 +144,7 @@ class QlessPyapi(object):
 
     def on_jobs_priority(self, request, jid):
         job = self.get_job(jid)
-        job.__setattr__('priority', request.data)
+        job.priority = request.data
         return self.json_response(job)
 
     def on_jobs_tag(self, request, jid):
