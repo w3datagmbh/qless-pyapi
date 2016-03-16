@@ -52,8 +52,8 @@ class QlessPyapi(object):
             Rule('/jobs/<string(length=32):jid>/untag', endpoint='jobs_untag'),
             Rule('/jobs/<string(length=32):jid>/track', endpoint='jobs_track'),
             Rule('/jobs/<string(length=32):jid>/untrack', endpoint='jobs_untrack'),
+            Rule('/jobs/tracked', endpoint='jobs_tracked'),
             Rule('/jobs/failed', endpoint='jobs_failed'),
-            # Rule('/jobs/failed/<group>', defaults={'start': 0, 'limit': 25}, endpoint='jobs_failed_list'),
             Rule('/jobs/failed/<group>/<int:start>/<int:limit>', endpoint='jobs_failed_list'),
             Rule('/jobs/failed/<group>/cancel', endpoint='jobs_failed_list_cancel'),
             Rule('/jobs/failed/<group>/retry', endpoint='jobs_failed_list_retry'),
@@ -150,6 +150,9 @@ class QlessPyapi(object):
     def on_jobs_untrack(self, request, jid):
         job = self.get_job(jid)
         return self.json_response(job.untrack())
+
+    def on_jobs_tracked(self, request):
+        return self.json_response(self.client.jobs.tracked())
 
     def on_jobs_failed(self, request):
         return self.json_response(self.client.jobs.failed())
