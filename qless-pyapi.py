@@ -41,6 +41,8 @@ class QlessPyapi(object):
             Rule('/queues/<queue_name>/pause', endpoint='queues_pause'),
             Rule('/queues/<queue_name>/unpause', endpoint='queues_unpause'),
             Rule('/queues/<queue_name>/stats', endpoint='queues_stats'),
+            Rule('/queues/<queue_name>/<any(waiting, running, stalled, scheduled, depends, recurring):state>/' +
+                 '<int:start>/<int:limit>', endpoint='queues_jobs'),
             Rule('/workers', endpoint='workers'),
             Rule('/workers/<worker_name>', endpoint='workers_get'),
             Rule('/jobs/<string(length=32):jid>', endpoint='jobs_get'),
@@ -113,6 +115,17 @@ class QlessPyapi(object):
 
     def on_queues_stats(self, request, queue_name):
         return self.json_response(self.client.queues[queue_name].stats())
+
+    def on_queues_jobs(self, request, state, queue_name, start, limit):
+        total = self.client.queues[queue_name].counts[state]
+
+        if state == 'waiting':
+            jobs = self.client.queues[queue_name].peek(limit)[start:limit]
+        else:
+            jids = getattr(self.client.queues[queue_name].jobs, state)(start, limit)
+            jobs = self.client.jobs.get(*jids)
+
+        return self.json_response({'total': total, 'jobs': jobs})
 
     def on_workers(self, request):
         return self.json_response(self.client.workers.counts)
@@ -196,6 +209,8 @@ class QlessPyapi(object):
         try:
             endpoint, values = adapter.match()
             return getattr(self, 'on_' + endpoint)(request, **values)
+        except qless.QlessException, e:
+            return Response(e.message, status=500)
         except HTTPException, e:
             return e
 
