@@ -52,6 +52,7 @@ class QlessPyapi(object):
             Rule('/workers/<worker_name>', endpoint='workers_get'),
             Rule('/jobs/<string(length=32):jid>', endpoint='jobs_get'),
             Rule('/jobs/<string(length=32):jid>/cancel', endpoint='jobs_cancel'),
+            Rule('/jobs/<string(length=32):jid>/cancel_tree', endpoint='jobs_cancel_tree'),
             Rule('/jobs/<string(length=32):jid>/retry', endpoint='jobs_retry'),
             Rule('/jobs/<string(length=32):jid>/priority', endpoint='jobs_priority'),
             Rule('/jobs/<string(length=32):jid>/tag', endpoint='jobs_tag'),
@@ -173,6 +174,27 @@ class QlessPyapi(object):
     def on_jobs_cancel(self, request, jid):
         return json_response(self.get_job(jid).cancel())
 
+    def on_jobs_cancel_tree(self, request, jid):
+        cancel_jids = set()
+        self.jobs_cancel_tree(jid, cancel_jids)
+
+        return json_response(list(cancel_jids))
+
+    def jobs_cancel_tree(self, jid, cancel_jids):
+        job = self.get_job(jid)
+
+        # do we have a child which leads to another leave?
+        for dependent in job.dependents:
+            if dependent not in cancel_jids:
+                return
+
+        # safe to do cancel ourselves
+        cancel_jids.add(job.jid)
+
+        # try to cancel our dependencies
+        for dependency in job.dependencies:
+            self.jobs_cancel_tree(dependency, cancel_jids)
+
     def on_jobs_retry(self, request, jid):
         job = self.get_job(jid)
         return json_response(job.move(job.queue_name))
@@ -209,11 +231,7 @@ class QlessPyapi(object):
 
     def dependency_subtree(self, jid, dest_jid):
         job = self.get_job(jid)
-
-        if jid == dest_jid:
-            label = jid.upper() + 'in ' + job.queue_name
-        else:
-            label = jid + 'in ' + job.queue_name
+        label = jid + 'in ' + job.queue_name
 
         if len(job.dependents) == 0:
             return label
