@@ -2,7 +2,6 @@ from __future__ import print_function
 
 import json
 
-import nltk
 import qless
 import re
 import sys
@@ -132,7 +131,13 @@ class QlessPyapi(object):
         return json_response({'total': total, 'jobs': jobs})
 
     def on_workers(self, request):
-        return json_response(self.client.workers.counts)
+        workers = self.client.workers.counts
+
+        # qless-core returns {} instead of an empty array
+        if isinstance(workers, dict):
+            return json_response([])
+
+        return json_response(workers)
 
     def on_workers_get(self, request, worker_name):
         worker = self.client.workers[worker_name]
@@ -198,20 +203,23 @@ class QlessPyapi(object):
         trees = [self.dependency_subtree(root_jid, jid) for root_jid in rootjobs]
 
         from nltk.treeprettyprinter import TreePrettyPrinter
-        return [TreePrettyPrinter(tree).text(unicodelines=True, html=True, maxwidth=34) for tree in trees]
+        from nltk import Tree
+        return [TreePrettyPrinter(tree).text(unicodelines=True, html=True, maxwidth=32, nodedist=3)
+                for tree in trees if isinstance(tree, Tree)]
 
     def dependency_subtree(self, jid, dest_jid):
         job = self.get_job(jid)
 
         if jid == dest_jid:
-            label = '-' + jid + '-in ' + job.queue_name
+            label = jid.upper() + 'in ' + job.queue_name
         else:
-            label = jid + ' in ' + job.queue_name
+            label = jid + 'in ' + job.queue_name
 
         if len(job.dependents) == 0:
             return label
         else:
-            return nltk.Tree(label, [self.dependency_subtree(jid, dest_jid) for jid in job.dependents])
+            from nltk import Tree
+            return Tree(label, [self.dependency_subtree(jid, dest_jid) for jid in job.dependents])
 
     def on_jobs_dependency_trees(self, request, jid):
         return json_response(self.dependency_tree(jid))
