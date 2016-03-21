@@ -59,6 +59,8 @@ class QlessPyapi(object):
             Rule('/jobs/<string(length=32):jid>/untag', endpoint='jobs_untag'),
             Rule('/jobs/<string(length=32):jid>/track', endpoint='jobs_track'),
             Rule('/jobs/<string(length=32):jid>/untrack', endpoint='jobs_untrack'),
+            Rule('/jobs/<string(length=32):jid>/depend', endpoint='jobs_depend'),
+            Rule('/jobs/<string(length=32):jid>/undepend', endpoint='jobs_undepend'),
             Rule('/jobs/<string(length=32):jid>/trees', endpoint='jobs_dependency_trees'),
             Rule('/jobs/cancel', endpoint='jobs_cancel_list'),
             Rule('/jobs/tracked', endpoint='jobs_tracked'),
@@ -190,7 +192,6 @@ class QlessPyapi(object):
     def on_jobs_cancel_subtree(self, request, jid):
         cancel_jids = []
         self.jobs_cancel_subtree(jid, cancel_jids)
-        # cancel_jids.reverse()
 
         return json_response(cancel_jids)
 
@@ -233,6 +234,19 @@ class QlessPyapi(object):
     def on_jobs_untrack(self, request, jid):
         job = self.get_job(jid)
         return json_response(job.untrack())
+
+    def on_jobs_depend(self, request, jid):
+        job = self.get_job(jid)
+        return json_response(job.depend(*json.loads(request.data)))
+
+    def on_jobs_undepend(self, request, jid):
+        job = self.get_job(jid)
+        undepend = json.loads(request.data)
+
+        if len(undepend) == 0:
+            return json_response(job.undepend(all=True))
+        else:
+            return json_response(job.undepend(*undepend))
 
     def dependency_tree(self, jid):
         rootjobs = self.get_rootjobs(jid)
