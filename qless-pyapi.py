@@ -1,15 +1,19 @@
+#!/usr/bin/env python2
 from __future__ import print_function
 
 import json
-
-import qless
+import os
 import re
 import sys
 
+from qless import Client, QlessException
+from werkzeug.utils import redirect
+
 from QlessJSONEncoder import QlessJSONEncoder
-from werkzeug.wrappers import Request, Response
-from werkzeug.routing import Map, Rule
 from werkzeug.exceptions import HTTPException, NotFound
+from werkzeug.routing import Map, Rule
+from werkzeug.wrappers import Request, Response
+from werkzeug.wsgi import SharedDataMiddleware, DispatcherMiddleware
 
 
 def json_response(content):
@@ -34,10 +38,9 @@ class QlessPyapi(object):
             print("Failed to load config file: " + str(e), file=sys.stderr)
             pass
 
-        self.client = qless.Client(self.config['redis'])
+        self.client = Client(self.config['redis'])
 
         self.url_map = Map([
-            Rule('/config', endpoint='config'),
             Rule('/groups', endpoint='groups'),
             Rule('/groups/<regex_str>', endpoint='groups_get'),
             Rule('/groups/$', endpoint='groups_get_ungrouped'),
@@ -72,15 +75,12 @@ class QlessPyapi(object):
             Rule('/jobs/completed/<int:start>/<int:limit>', endpoint='jobs_completed'),
         ])
 
-    def on_config(self, request):
-        return json_response(self.config)
-
     def on_groups(self, request):
         groups = self.group_to_navtree('Groups', self.config['groups'])
         return json_response(groups['children'])
 
     def group_to_navtree(self, name, data):
-        if isinstance(data, basestring):
+        if not isinstance(data, dict):
             return {
                 'label': name,
                 'data': data
@@ -101,7 +101,7 @@ class QlessPyapi(object):
         return json_response(queues)
 
     def queues_remove_group_matches(self, queues, data):
-        if isinstance(data, basestring):
+        if not isinstance(data, dict):
             regex = re.compile("(?:" + data + r")\Z")
             return [queue for queue in queues if not regex.match(queue['name'])]
         else:
@@ -311,11 +311,11 @@ class QlessPyapi(object):
         try:
             endpoint, values = adapter.match()
             return getattr(self, 'on_' + endpoint)(request, **values)
-        except HTTPException, e:
+        except HTTPException as e:
             return e
-        except qless.QlessException, e:
+        except QlessException as e:
             return Response(e.message, status=500)
-        except Exception, e:
+        except Exception as e:
             return Response(e, status=500)
 
     def wsgi_app(self, environ, start_response):
@@ -327,13 +327,23 @@ class QlessPyapi(object):
         return self.wsgi_app(environ, start_response)
 
 
-def create_app():
-    return QlessPyapi()
+def create_app(with_ui=True):
+    app = QlessPyapi()
+
+    if with_ui:
+        app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {
+            '/api': app.wsgi_app,
+            '/app': SharedDataMiddleware(redirect('/app/index.html'), {
+                '/': os.path.join(os.path.dirname(__file__), 'qless-ui/app')
+            }),
+            '/': redirect('/app/index.html')
+        })
+
+    return app
 
 
 if __name__ == '__main__':
     from werkzeug.serving import run_simple
 
     app = create_app()
-    run_simple('0.0.0.0', 4000, app)
-    # reloader_type='watchdog'
+    run_simple('0.0.0.0', 4000, app, use_reloader=True)

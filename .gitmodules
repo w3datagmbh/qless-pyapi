@@ -1,0 +1,3 @@
+[submodule "qless-ui"]
+	path = qless-ui
+	url = https://git.brn.li/w3data/qless-ui.git
