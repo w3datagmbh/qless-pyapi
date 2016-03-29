@@ -20,11 +20,12 @@ def json_response(content):
 
 
 class Config:
-    def __init__(self, config_file = 'config.json'):
+    def __init__(self, config_file='config.json'):
         # default config
         self.default_config = {
-            'hostname': '0.0.0.0',
+            'hostname': '127.0.0.1',
             'port': 4000,
+            'ui': True,
             'redis': 'redis://localhost',
             'groups': {
                 'ungrouped': '$'
@@ -39,14 +40,17 @@ class Config:
             with open(config_file) as cfg:
                 self.config = json.load(cfg)
         except Exception as e:
-            print("Failed to load config file: " + str(e), file=sys.stderr)
+            print('Failed to load config file:', str(e), file=sys.stderr)
+            print('[config]', 'using default config:', self.default_config)
             pass
 
     def __getitem__(self, item):
         if item in self.config:
             return self.config[item]
         else:
-            return self.default_config[item]
+            default = self.default_config[item]
+            print('[config]', 'using default for `' + item + '`:', default)
+            return default
 
 
 class QlessPyapi(object):
@@ -56,8 +60,9 @@ class QlessPyapi(object):
 
         self.url_map = Map([
             Rule('/groups', endpoint='groups'),
-            Rule('/groups/<regex_str>', endpoint='groups_get'),
-            Rule('/groups/$', endpoint='groups_get_ungrouped'),
+            Rule('/groups/nav_tree', endpoint='groups_nav_tree'),
+            Rule('/groups/queues/<string:regex_str>', endpoint='groups_get_queues'),
+            Rule('/groups/queues/$', endpoint='groups_get_queues_ungrouped'),
             Rule('/queues', endpoint='queues'),
             Rule('/queues/<queue_name>', endpoint='queues_get'),
             Rule('/queues/<queue_name>/pause', endpoint='queues_pause'),
@@ -90,10 +95,13 @@ class QlessPyapi(object):
         ])
 
     def on_groups(self, request):
-        groups = self.group_to_navtree('Groups', self.config['groups'])
+        return json_response(self.config['groups'])
+
+    def on_groups_nav_tree(self, request):
+        groups = self.group_to_nav_tree('Groups', self.config['groups'])
         return json_response(groups['children'])
 
-    def group_to_navtree(self, name, data):
+    def group_to_nav_tree(self, name, data):
         if not isinstance(data, dict):
             return {
                 'label': name,
@@ -102,15 +110,16 @@ class QlessPyapi(object):
         else:
             return {
                 'label': name,
-                'children': [self.group_to_navtree(group_name, group_data) for (group_name, group_data) in data.items()]
+                'children': [self.group_to_nav_tree(group_name, group_data) for (group_name, group_data) in
+                             data.items()]
             }
 
-    def on_groups_get(self, request, regex_str):
+    def on_groups_get_queues(self, request, regex_str):
         regex = re.compile("(?:" + regex_str + r")\Z")
         queues = [queue for queue in self.client.queues.counts if regex.match(queue['name'])]
         return json_response(queues)
 
-    def on_groups_get_ungrouped(self, request):
+    def on_groups_get_queues_ungrouped(self, request):
         queues = self.queues_remove_group_matches(self.client.queues.counts, self.config['groups'])
         return json_response(queues)
 
@@ -144,8 +153,8 @@ class QlessPyapi(object):
         if state == 'waiting':
             jobs = self.client.queues[queue_name].peek(limit)[start:limit]
         else:
-            jids = getattr(self.client.queues[queue_name].jobs, state)(start, limit)
-            jobs = self.client.jobs.get(*jids)
+            jid_list = getattr(self.client.queues[queue_name].jobs, state)(start, limit)
+            jobs = self.client.jobs.get(*jid_list)
 
         return json_response({'total': total, 'jobs': jobs})
 
@@ -170,18 +179,18 @@ class QlessPyapi(object):
             raise NotFound()
         return job[0]
 
-    def get_rootjobs(self, jid):
-        rootjobs = []
+    def get_root_jobs(self, jid):
+        root_jobs = []
         job = self.get_job(jid)
 
         if len(job.dependencies) == 0:
             return [job.jid]
         else:
             for dep in job.dependencies:
-                for jid in self.get_rootjobs(dep):
-                    rootjobs.append(jid)
+                for jid in self.get_root_jobs(dep):
+                    root_jobs.append(jid)
 
-        return set(rootjobs)
+        return set(root_jobs)
 
     def on_jobs_get(self, request, jid):
         job = self.get_job(jid)
@@ -205,25 +214,25 @@ class QlessPyapi(object):
         return json_response(canceled)
 
     def on_jobs_cancel_subtree(self, request, jid):
-        cancel_jids = []
-        self.jobs_cancel_subtree(jid, cancel_jids)
+        cancel_jid_list = []
+        self.jobs_cancel_subtree(jid, cancel_jid_list)
 
-        return json_response(cancel_jids)
+        return json_response(cancel_jid_list)
 
-    def jobs_cancel_subtree(self, jid, cancel_jids):
+    def jobs_cancel_subtree(self, jid, cancel_jid_list):
         job = self.get_job(jid)
 
         # do we have a child which leads to another leave?
         for dependent in job.dependents:
-            if dependent not in cancel_jids:
+            if dependent not in cancel_jid_list:
                 return
 
         # safe to do cancel ourselves
-        cancel_jids.append(job.jid)
+        cancel_jid_list.append(job.jid)
 
         # try to cancel our dependencies
         for dependency in job.dependencies:
-            self.jobs_cancel_subtree(dependency, cancel_jids)
+            self.jobs_cancel_subtree(dependency, cancel_jid_list)
 
     def on_jobs_retry(self, request, jid):
         job = self.get_job(jid)
@@ -268,8 +277,8 @@ class QlessPyapi(object):
             return json_response(job.undepend(*undepend))
 
     def dependency_tree(self, jid):
-        rootjobs = self.get_rootjobs(jid)
-        trees = [self.dependency_subtree(root_jid, jid) for root_jid in rootjobs]
+        root_jobs = self.get_root_jobs(jid)
+        trees = [self.dependency_subtree(root_jid, jid) for root_jid in root_jobs]
 
         from nltk.treeprettyprinter import TreePrettyPrinter
         from nltk import Tree
@@ -315,8 +324,8 @@ class QlessPyapi(object):
         return json_response(res)
 
     def on_jobs_completed(self, request, start, limit):
-        jids = self.client.jobs.complete(start, limit)
-        jobs = self.client.jobs.get(*jids)
+        jid_list = self.client.jobs.complete(start, limit)
+        jobs = self.client.jobs.get(*jid_list)
         total = len(self.client.jobs.complete(0, 1000))  # TODO: FIX ME
         return json_response({'total': total, 'jobs': jobs})
 
@@ -341,10 +350,11 @@ class QlessPyapi(object):
         return self.wsgi_app(environ, start_response)
 
 
-def create_app(config, with_ui=True):
+def create():
+    config = Config()
     app = QlessPyapi(config)
 
-    if with_ui:
+    if config['ui']:
         app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {
             '/api': app.wsgi_app,
             '/app': SharedDataMiddleware(redirect('/app/index.html'), {
@@ -353,12 +363,15 @@ def create_app(config, with_ui=True):
             '/': redirect('/app/index.html')
         })
 
-    return app
+    return app, config
+
+
+def run_server():
+    from werkzeug.serving import run_simple
+
+    (app, config) = create()
+    run_simple(config['hostname'], config['port'], app, use_reloader=True)
 
 
 if __name__ == '__main__':
-    from werkzeug.serving import run_simple
-
-    config = Config()
-    app = create_app(config)
-    run_simple(config['hostname'], config['port'], app, use_reloader=True)
+    run_server()
