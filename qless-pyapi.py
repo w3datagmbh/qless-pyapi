@@ -2,16 +2,15 @@
 from __future__ import print_function
 
 import json
-import os
 import re
 import sys
 
+from os import path
 from qless import Client, QlessException
-from werkzeug.utils import redirect
-
 from QlessJSONEncoder import QlessJSONEncoder
 from werkzeug.exceptions import HTTPException, NotFound
 from werkzeug.routing import Map, Rule
+from werkzeug.utils import redirect
 from werkzeug.wrappers import Request, Response
 from werkzeug.wsgi import SharedDataMiddleware, DispatcherMiddleware
 
@@ -20,24 +19,39 @@ def json_response(content):
     return Response(json.dumps(content, default=QlessJSONEncoder().default), content_type='application/json')
 
 
-class QlessPyapi(object):
-    def __init__(self):
+class Config:
+    def __init__(self, config_file = 'config.json'):
         # default config
-        self.config = {
+        self.default_config = {
+            'hostname': '0.0.0.0',
+            'port': 4000,
             'redis': 'redis://localhost',
             'groups': {
                 'ungrouped': '$'
             }
         }
 
+        # empty config
+        self.config = {}
+
         # load config
         try:
-            with open('config.json') as cfg:
+            with open(config_file) as cfg:
                 self.config = json.load(cfg)
         except Exception as e:
             print("Failed to load config file: " + str(e), file=sys.stderr)
             pass
 
+    def __getitem__(self, item):
+        if item in self.config:
+            return self.config[item]
+        else:
+            return self.default_config[item]
+
+
+class QlessPyapi(object):
+    def __init__(self, config):
+        self.config = config
         self.client = Client(self.config['redis'])
 
         self.url_map = Map([
@@ -327,14 +341,14 @@ class QlessPyapi(object):
         return self.wsgi_app(environ, start_response)
 
 
-def create_app(with_ui=True):
-    app = QlessPyapi()
+def create_app(config, with_ui=True):
+    app = QlessPyapi(config)
 
     if with_ui:
         app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {
             '/api': app.wsgi_app,
             '/app': SharedDataMiddleware(redirect('/app/index.html'), {
-                '/': os.path.join(os.path.dirname(__file__), 'qless-ui/app')
+                '/': path.join(path.dirname(__file__), 'qless-ui', 'app')
             }),
             '/': redirect('/app/index.html')
         })
@@ -345,5 +359,6 @@ def create_app(with_ui=True):
 if __name__ == '__main__':
     from werkzeug.serving import run_simple
 
-    app = create_app()
-    run_simple('0.0.0.0', 4000, app, use_reloader=True)
+    config = Config()
+    app = create_app(config)
+    run_simple(config['hostname'], config['port'], app, use_reloader=True)
