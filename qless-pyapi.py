@@ -14,6 +14,8 @@ from werkzeug.utils import redirect
 from werkzeug.wrappers import Request, Response
 from werkzeug.wsgi import SharedDataMiddleware, DispatcherMiddleware
 
+QLESS_MAX_PEEK = 1000
+
 
 def json_response(content):
     return Response(json.dumps(content, default=QlessJSONEncoder().default), content_type='application/json')
@@ -92,6 +94,8 @@ class QlessPyapi(object):
             Rule('/jobs/failed/<group>/cancel', endpoint='jobs_failed_list_cancel'),
             Rule('/jobs/failed/<group>/retry', endpoint='jobs_failed_list_retry'),
             Rule('/jobs/completed/<int:start>/<int:limit>', endpoint='jobs_completed'),
+            Rule('/tags', endpoint='tags'),
+            Rule('/tags/<tag>/<int:start>/<int:limit>', endpoint='tags_get'),
         ])
 
     def on_groups(self, request):
@@ -326,8 +330,18 @@ class QlessPyapi(object):
     def on_jobs_completed(self, request, start, limit):
         jid_list = self.client.jobs.complete(start, limit)
         jobs = self.client.jobs.get(*jid_list)
-        total = len(self.client.jobs.complete(0, 1000))  # TODO: FIX ME
+        total = len(self.client.jobs.complete(0, QLESS_MAX_PEEK))  # TODO: FIX ME
         return json_response({'total': total, 'jobs': jobs})
+
+    def on_tags(self, request):
+        tags = self.client.tags(0, QLESS_MAX_PEEK)
+        tags.sort()
+        return json_response(tags)
+
+    def on_tags_get(self, request, tag, start, limit):
+        tag = self.client.jobs.tagged(tag, start, limit)
+        tag['jobs'] = self.client.jobs.get(*tag['jobs'])
+        return json_response(tag)
 
     def dispatch_request(self, request):
         adapter = self.url_map.bind_to_environ(request.environ)
