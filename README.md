@@ -5,8 +5,15 @@ Qless REST API wrapper in python, includes Qless UI.
 ## Install (Qless UI)
 
 ```
+sudo apt-get install nodejs-legacy npm
 git submodule update --init --recursive
 cd qless-ui; npm install; cd -
+```
+
+## Install Dependencies (Qless pyAPI)
+```
+sudo apt-get install python-pip
+sudo pip install redis qless-py simplejson werkzeug
 ```
 
 

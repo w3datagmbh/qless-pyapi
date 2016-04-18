@@ -137,7 +137,13 @@ class QlessPyapi(object):
             return queues
 
     def on_queues(self, request):
-        return json_response(self.client.queues.counts)
+        queues = self.client.queues.counts
+
+        # qless-core returns {} instead of an empty array
+        if isinstance(queues, dict):
+            return json_response([])
+
+        return json_response(queues)
 
     def on_queues_get(self, request, queue_name):
         return json_response(self.client.queues[queue_name].counts)
@@ -335,6 +341,11 @@ class QlessPyapi(object):
 
     def on_tags(self, request):
         tags = self.client.tags(0, QLESS_MAX_PEEK)
+
+        # qless-core returns {} instead of an empty array
+        if isinstance(tags, dict):
+            return json_response([])
+
         tags.sort()
         return json_response(tags)
 
