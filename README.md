@@ -13,7 +13,7 @@ cd qless-ui; npm install; cd -
 ## Install Dependencies (Qless pyAPI)
 ```
 sudo apt-get install python-pip
-sudo pip install redis qless-py simplejson werkzeug
+sudo pip install redis qless-py simplejson werkzeug nltk
 ```
 
 
