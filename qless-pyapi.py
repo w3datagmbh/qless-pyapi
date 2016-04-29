@@ -350,7 +350,7 @@ class QlessPyapi(object):
         return json_response(tags)
 
     def on_tags_get(self, request, tag, start, limit):
-        tag = self.client.jobs.tagged(tag, start, limit)
+        tag = self.client.jobs.tagged(tag, start, start + limit)
         tag['jobs'] = self.client.jobs.get(*tag['jobs'])
         return json_response(tag)
 
