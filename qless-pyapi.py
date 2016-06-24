@@ -357,6 +357,9 @@ class QlessPyapi(object):
     def dispatch_request(self, request):
         adapter = self.url_map.bind_to_environ(request.environ)
         try:
+            if isinstance(request.data, bytes):
+                request.data = request.data.decode('utf-8')
+
             endpoint, values = adapter.match()
             return getattr(self, 'on_' + endpoint)(request, **values)
         except HTTPException as e:
